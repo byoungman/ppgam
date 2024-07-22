@@ -1,22 +1,35 @@
 ## functions for quadrature
 
-.make_nquad <- function(x, vars) {
+.make_nquad <- function(x, vars, data, trace) {
 # x the `nquad' argument supplied to `ppgam'
 # v the names of variables in `formula' supplied to `ppgam' (except response)
 nvars <- length(vars)
-nquad <- rep(NA, nvars)
-names(nquad) <- vars
-if (is.null(names(x))) {
-  if (length(x) == 1) {
-    nquad[] <- x
-  } else {
-    stop("Can't provide NULL-named `nquad' of length > 1. See Details for `ppgam'.")
+if (missing(x)) {
+  nquad <- rep(15, nvars)
+  names(nquad) <- vars
+  fc <- sapply(data, inherits, c("factor", "character"))
+  if (any(fc)) {
+    nquad[fc] <- sapply(data[, fc, drop=FALSE], function(x) length(unique(x)))
   }
 } else {
-  nquad[names(x)] <- x
+  nquad <- rep(NA, nvars)
+  names(nquad) <- vars
+  if (is.null(names(x))) {
+    if (length(x) == 1) {
+      nquad[] <- x
+    } else {
+      stop("Can't provide NULL-named `nquad' of length > 1. See Details for `ppgam'.")
+    }
+  } else {
+    nquad[names(x)] <- x
+  }
 }
-if (any(is.na(nquad)))
-  stop(paste("'nquad' needs values for: ", paste(vars[is.na(nquad)], collapse=", "), ". See Details for `ppgam'.", sep=""))
+set2default <- is.na(nquad)
+if (any(set2default)) {
+  nquad[set2default] <- 15
+  if (trace %in% 2:3)
+    message(paste("'nquad' set to 15 for: ", paste(vars[set2default], collapse=", "), ".", sep=""))
+}
 nquad
 }
 
@@ -79,21 +92,45 @@ if (length(x) == 1) {
 x
 }
 
-# this should probably use do.call()
-.approx <- function(x, n, type) {
-if (type == "midpoint") {
-  out <- .mids(x, n)
+.non.numeric <- function(x, n, wnn) {
+ux <- sort(unique(x))
+nx <- length(ux)
+if (wnn) {
+  wts <- as.vector(table(x))
 } else {
-  if (type == "simpson") {
-    out <- .simpson(x, n)
+  wts <- rep(1/n, n)
+}
+if (nx > n) {
+  if (wnn) {
+    samp <- sort(order(wts, decreasing=TRUE)[seq_len(n)])
+    wts <- wts[samp]
+    wts <- wts / sum(wts)
   } else {
-    out <- .gaussian(x, n)
+    samp <- round(nx * (1:n - .5) / n)
+  }
+  ux <- ux[samp]
+}
+data.frame(ux, wts)
+}
+
+.approx <- function(x, n, type, wnn) {
+if (inherits(x, c("factor", "character"))) {
+  out <- .non.numeric(x, n, wnn)
+} else {
+  if (type == "midpoint") {
+    out <- .mids(x, n)
+  } else {
+    if (type == "simpson") {
+      out <- .simpson(x, n)
+    } else {
+      out <- .gaussian(x, n)
+    }
   }
 }
 out
 }
 
-.make_nodes <- function(x, y, n, approx, trace) {
+.make_nodes <- function(x, y, n, approx, trace, wnn) {
 # function to give quadrature nodes and weights
 # x can be ...
 # -- NULL, then y and n are used
@@ -107,21 +144,34 @@ out
 # approx[2] is from c("exact", "hist", "pretty") is the function to create node range
 # return a 2-column matrix of nodes and weights
 if (!is.null(x)) {
-  out <- as.matrix(x)
+  out <- as.data.frame(x)
   if (ncol(out) == 1) {
-    if (trace %in% 2:3) cat("Nodes taken as breaks from which midpoints derived.\n")
-    h <- diff(out[,1])
-    h <- h / sum(h)
-    out <- cbind(x[-1] - .5 * h, h)
+    if (trace %in% 2:3) 
+      cat("Nodes taken as breaks from which midpoints derived.\n")
+    if (inherits(out[,1], c("factor", "character"))) {
+      if (ncol(out) == 1) {
+        browser()
+        if (!all(out[,1] %in% x))
+          stop("Some nodes gives for non-numeric variable not in `data'.")
+        out[,2] <- 1 / length(out[,1])
+      }
+    } else {
+      h <- diff(out[,1])
+      h <- h / sum(h)
+      out <- data.frame(x[-1] - .5 * h, h)
+    }
   }
-  if (trace %in% 2:3) cat("Note: weights not scaled to sum to zero.\n")
+  if (trace %in% 2:3) {
+    if (sum(out[,2]) != 1)
+      cat("Note: weights not scaled to sum to one.\n")
+  }
 } else {
   if (approx[2] == "pretty") {
     x <- pretty(y, n)
     n <- length(x) - 1
-    out <- .approx(x, n, approx[1])  
+    out <- .approx(x, n, approx[1], wnn)  
   } else {
-    out <- .approx(y, n, approx[1]) 
+    out <- .approx(y, n, approx[1], wnn) 
   }
   out[,2] <- out[,2] / sum(out[,2])
 }
@@ -284,3 +334,13 @@ ctrl$inner <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=1e-4, stepmax=1
 ctrl$outer <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=2e-2, stepmax=3)
 ctrl
 }
+
+.pivchol_rmvn <- function(n, mu, Sig) {
+  R <- suppressWarnings(chol(Sig, pivot = TRUE))
+  piv <- order(attr(R, "pivot"))  ## reverse pivoting index
+  r <- attr(R, "rank")  ## numerical rank
+  V <- R[1:r, piv]
+  Y <- crossprod(V, matrix(rnorm(n * r), r))
+  Y + as.vector(mu)
+}
+

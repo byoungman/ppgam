@@ -9,6 +9,7 @@
 #' @param knots spline knots to pass to \link[mgcv]{gam}
 #' @param use.data should splines should be constructed from \code{data} (otherwise uses \code{nodes})?
 #' @param trace integers controlling what's reported. Defaults to 0
+#' @param weight.non.numeric should nodes for non-numeric variables be weighted according how often they occur? Defaults to \code{FALSE}
 #' 
 #' @details
 #'
@@ -67,6 +68,12 @@
 #' with \code{trace = 1}, of nodes with \code{trace = 2}, and \code{trace = 3}
 #' prints both.
 #' 
+#' \code{weight.non.numeric} applied to any non-numeric variables, and gives non-equal 
+#' quadrature weights to different nodes if \code{TRUE}. So nodes get weights according
+#' to their frequency of occurrence in \code{data}. If code{nquad} is invoked, only a
+#' subset of the unique values of the non-numeric variable are used, which are the \code{nquad}
+#' with largest weights.
+#'
 #' @references
 #' 
 #' Wood, S. N., Pya, N., & Safken, B. (2016). Smoothing parameter and model selection for general 
@@ -120,8 +127,9 @@
 #' }
 #'
 #' @export
-ppgam <- function(formula, data, nodes = NULL, weights = 1, nquad = 15, 
-approx = c("midpoint", "exact"), knots = NULL, use.data = TRUE, trace = 0) {
+ppgam <- function(formula, data, nodes = NULL, weights = 1, nquad, 
+approx = c("midpoint", "exact"), knots = NULL, use.data = TRUE, trace = 0,
+weight.non.numeric = FALSE) {
 
 # convert and objects of class "Date" to integer
 data.class <- sapply(data, class)
@@ -156,7 +164,7 @@ if (with.response) {
 vars <- gam.info$fake.names
 nvars <- length(vars)
 
-nquad <- .make_nquad(nquad, vars)
+nquad <- .make_nquad(nquad, vars, data[,vars], trace)
 
 ## set up quadrature nodes and weights
 # identify node type
@@ -174,7 +182,7 @@ w0 <- weights
 if (!is.data.frame(nodes)) {
   approx <- .check.approx(approx)
   nodes <- lapply(vars, function(x) nodes[[x]])
-  nodes <- lapply(seq_len(nvars), function(i) .make_nodes(nodes[[i]], data[,vars[i]], nquad[i], approx, trace))
+  nodes <- lapply(seq_len(nvars), function(i) .make_nodes(nodes[[i]], data[,vars[i]], nquad[i], approx, trace, weight.non.numeric))
   names(nodes) <- vars
   if (trace %in% 2:3) {
     cat("\nQuadrature nodes and weights:\n")
@@ -224,7 +232,7 @@ beta <- .give_beta0(G)
 rho0 <- numeric(length(G$sp))
 G$Sd <- evgam:::.joinSmooth(list(G))
 G$S <- evgam:::.makeS(G$Sd, rho0)
-G$null.deviance <- -.f(beta, G)
+G$null.deviance <- NA#.f0(beta, G)
 attr(rho0, "beta") <- beta
 
 fit.reml <- evgam:::.BFGS(rho0, .reml0, .reml1, dat=G, control=G$control$outer, trace=trace %in% c(1, 3))
@@ -233,10 +241,10 @@ G$coefficients <- attr(fit.reml$objective, "beta")
 H <- attr(fit.reml$objective, "Hessian")
 G$Vp <- MASS::ginv(H)
 G$S <- evgam:::.makeS(G$Sd, exp(fit.reml$par))
-G$deviance <- -.f(G$coefficients, G)
+G$deviance <- .f0(G$coefficients, G)
 H0 <- H - G$S
 G$edf <- colSums(G$Vp %*% H0)
-G$logLik <-  -.f0(G$coefficients, G)
+G$logLik <-  -.f(G$coefficients, G)
 G$scale.estimated <- 0
 G$df.residual <- ncol(G$X) - sum(G$edf)
 G$aic <- 2 * (G$df.residual - G$logLik)
@@ -251,14 +259,15 @@ G$method <- "REML"
 if (!with.response) G$formula <- formula0
 G$family$no.r.sq <- TRUE
 G$gcv.ubre <- as.vector(fit.reml$objective)
-set.seed(1)
 n.samp <- max(1e3, 2 * G$nb)
 if (n.samp < nrow(G$X)) {
   G$R <- G$X[sample(nrow(G$X), n.samp, replace=FALSE),]
 } else {
   G$R <- G$X
 }
+G$family$family <- 'Poisson process'
 
+class(G) <- c('ppgam', class(G))
 return(G)
 
 }
