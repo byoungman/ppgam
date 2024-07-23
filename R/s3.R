@@ -74,7 +74,7 @@ fitted.ppgam <- function(object, ...) {
   predict(object)
 }
 
-#' Extract Model Coefficient
+#' Extract Model Coefficients
 #'
 #' @param object a fitted \code{ppgam} object
 #' @param ... not used
@@ -91,71 +91,15 @@ fitted.ppgam <- function(object, ...) {
 #' hits <- subset(USlandfall, landfall == 1)
 #' 
 #' m1 <- ppgam( ~ s(year), hits)
-#' coefficients(m1)
 #' coef(m1)
 #' 
 #' @return Model coefficients extracted from the object `object'.
 #' 
 #' @export
 #' 
-coefficients.ppgam <- function(object, ...) {
-  coefficients(object, ...)
+coef.ppgam <- function(object, ...) {
+  object$coefficients
 }
-
-#' Simulations from a fitted \code{ppgam} object
-#'
-#' @param object a fitted \code{ppgam} object
-#' @param nsim an integer giving the number of simulations
-#' @param seed an integer giving the seed for simulations
-#' @param newdata a data frame
-#' @param type a character string, as in \code{predict.ppgam}
-#' @param ... arguments to be passed to \code{predict.ppgam}
-#'
-#' @return Simulations of parameters
-#'
-#' @seealso \link{predict.ppgam}
-#'
-#' @examples
-#'
-#' # Times of landfalling US hurricanes
-#' data(USlandfall)
-#' 
-#' # convert dates to years, as a continuous variable
-#' year <- as.integer(format(USlandfall$date, "%Y"))
-#' day <- as.integer(format(USlandfall$date, "%j"))
-#' USlandfall$year <- year + pmin(day / 365, 1)
-#' hits <- subset(USlandfall, landfall == 1)
-#' 
-#' # this creates nodes in the default way
-#' m1 <- ppgam( ~ s(year), hits)
-#' simulate(m1)
-#' simulate(m1, type = "response")
-#' simulate(m1, newdata = data.frame(year = c(2000, 2001)))
-#'
-#' @export
-#' 
-simulate.ppgam <- function(object, nsim = 1, seed = NULL, newdata,
-                           type = "link", ...) {
-  if(!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
-    runif(1) # initialize the RNG if necessary
-  if(is.null(seed)) {
-    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
-  } else {
-    R.seed <- get(".Random.seed", envir = .GlobalEnv)
-    set.seed(seed)
-    RNGstate <- structure(seed, kind = as.list(RNGkind()))
-    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
-  }
-  family <- object$family
-  V.type <- "Vp"
-  B <- .pivchol_rmvn(nsim, object$coefficients, object[[V.type]])
-  X <- predict(object, newdata, type = "lpmatrix")
-  X <- X %*% B
-  if (type == "response")
-    X <- exp(X)
-  return(X)
-}
-
 #' Plots smooths of a fitted \code{ppgam} object
 #'
 #' @param x a fitted \code{ppgam} object
@@ -218,4 +162,58 @@ plot.ppgam <- function(x, ...) {
 #' 
 print.ppgam <- function(x, ...) {
   mgcv::print.gam(x, ...)
+}
+
+#' Simulations from a fitted \code{ppgam} object
+#'
+#' @param object a fitted \code{ppgam} object
+#' @param nsim an integer giving the number of simulations
+#' @param seed an integer giving the seed for simulations
+#' @param newdata a data frame
+#' @param type a character string, as in \code{predict.ppgam}
+#' @param ... arguments to be passed to \code{predict.ppgam}
+#'
+#' @return Simulations of parameters
+#'
+#' @seealso \link{predict.ppgam}
+#'
+#' @examples
+#'
+#' # Times of landfalling US hurricanes
+#' data(USlandfall)
+#' 
+#' # convert dates to years, as a continuous variable
+#' year <- as.integer(format(USlandfall$date, "%Y"))
+#' day <- as.integer(format(USlandfall$date, "%j"))
+#' USlandfall$year <- year + pmin(day / 365, 1)
+#' hits <- subset(USlandfall, landfall == 1)
+#' 
+#' # this creates nodes in the default way
+#' m1 <- ppgam( ~ s(year), hits)
+#' simulate(m1)
+#' simulate(m1, type = "response")
+#' simulate(m1, newdata = data.frame(year = c(2000, 2001)))
+#'
+#' @export
+#' 
+simulate.ppgam <- function(object, nsim = 1, seed = NULL, newdata,
+                           type = "link", ...) {
+  if(!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+    runif(1) # initialize the RNG if necessary
+  if(is.null(seed)) {
+    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
+  } else {
+    R.seed <- get(".Random.seed", envir = .GlobalEnv)
+    set.seed(seed)
+    RNGstate <- structure(seed, kind = as.list(RNGkind()))
+    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
+  }
+  family <- object$family
+  V.type <- "Vp"
+  B <- .pivchol_rmvn(nsim, object$coefficients, object[[V.type]])
+  X <- predict.ppgam(object, newdata, type = "lpmatrix")
+  X <- X %*% B
+  if (type == "response")
+    X <- exp(X)
+  return(X)
 }

@@ -9,11 +9,12 @@ ppgam(
   data,
   nodes = NULL,
   weights = 1,
-  nquad = 15,
+  nquad,
   approx = c("midpoint", "exact"),
   knots = NULL,
   use.data = TRUE,
-  trace = 0
+  trace = 0,
+  weight.non.numeric = FALSE
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ ppgam(
 \item{use.data}{should splines should be constructed from \code{data} (otherwise uses \code{nodes})?}
 
 \item{trace}{integers controlling what's reported. Defaults to 0}
+
+\item{weight.non.numeric}{should nodes for non-numeric variables be weighted according how often they occur? Defaults to \code{FALSE}}
 }
 \value{
 An object of class \code{gam}, as returned by \code{mgcv::gam}, with parameters,
@@ -97,6 +100,12 @@ range of the variable (\code{"exact"}), or by calling \code{pretty()} (\code{"pr
 \code{trace} controls what is reported. Details of convergence are printed 
 with \code{trace = 1}, of nodes with \code{trace = 2}, and \code{trace = 3}
 prints both.
+
+\code{weight.non.numeric} applied to any non-numeric variables, and gives non-equal 
+quadrature weights to different nodes if \code{TRUE}. So nodes get weights according
+to their frequency of occurrence in \code{data}. If \code{nquad} is invoked, only a
+subset of the unique values of the non-numeric variable are used, which are the \code{nquad}
+with largest weights.
 }
 \examples{
 

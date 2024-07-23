@@ -70,7 +70,7 @@
 #' 
 #' \code{weight.non.numeric} applied to any non-numeric variables, and gives non-equal 
 #' quadrature weights to different nodes if \code{TRUE}. So nodes get weights according
-#' to their frequency of occurrence in \code{data}. If code{nquad} is invoked, only a
+#' to their frequency of occurrence in \code{data}. If \code{nquad} is invoked, only a
 #' subset of the unique values of the non-numeric variable are used, which are the \code{nquad}
 #' with largest weights.
 #'
