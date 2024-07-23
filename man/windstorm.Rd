@@ -21,7 +21,7 @@ data(windstorm)
 }
 \description{
 A dataset in windstorm peaks between 1st January 1979 and 31st December 2014
-occuring in [-50, 33] longitude and [36, 77] latitude.
+occurring in [-50, 33] longitude and [36, 77] latitude.
 }
 \examples{
 

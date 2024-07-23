@@ -1,7 +1,7 @@
 #' Locations of windstorm peaks and tracks over the North Atlantic
 #'
 #' A dataset in windstorm peaks between 1st January 1979 and 31st December 2014
-#' occuring in [-50, 33] longitude and [36, 77] latitude.
+#' occurring in [-50, 33] longitude and [36, 77] latitude.
 #'
 #' @format A data frame with 3133 rows and 4 variables
 #' 
