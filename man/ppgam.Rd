@@ -14,7 +14,9 @@ ppgam(
   knots = NULL,
   use.data = TRUE,
   trace = 0,
-  weight.non.numeric = FALSE
+  weight.non.numeric = FALSE,
+  sp0 = 1,
+  sp = -1
 )
 }
 \arguments{
@@ -37,6 +39,10 @@ ppgam(
 \item{trace}{integers controlling what's reported. Defaults to 0}
 
 \item{weight.non.numeric}{should nodes for non-numeric variables be weighted according how often they occur? Defaults to \code{FALSE}}
+
+\item{sp0}{a scalar or vector of initial smoothing parameter values. Defaults to 1}
+
+\item{sp}{a scalar or vector of fixed smoothing parameter values. Defaults to -1, which estimates via REML}
 }
 \value{
 An object of class \code{gam}, as returned by \code{mgcv::gam}, with parameters,
@@ -106,6 +112,12 @@ quadrature weights to different nodes if \code{TRUE}. So nodes get weights accor
 to their frequency of occurrence in \code{data}. If \code{nquad} is invoked, only a
 subset of the unique values of the non-numeric variable are used, which are the \code{nquad}
 with largest weights.
+
+\code{sp} can be used to supply fixed smoothing parameter values, and \code{sp0}
+can be used to provide initial smoothing parameter values for REML optimisation.
+If a single value is supplied and the model requires more smoothing parameters,
+supplied values are repeated. It is currently only possible the fix or estimate
+all or no smoothing parameter values.
 }
 \examples{
 

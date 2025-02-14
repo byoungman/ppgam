@@ -10,6 +10,8 @@
 #' @param use.data should splines should be constructed from \code{data} (otherwise uses \code{nodes})?
 #' @param trace integers controlling what's reported. Defaults to 0
 #' @param weight.non.numeric should nodes for non-numeric variables be weighted according how often they occur? Defaults to \code{FALSE}
+#' @param sp0 a scalar or vector of initial smoothing parameter values. Defaults to 1
+#' @param sp a scalar or vector of fixed smoothing parameter values. Defaults to -1, which estimates via REML
 #' 
 #' @details
 #'
@@ -74,6 +76,12 @@
 #' subset of the unique values of the non-numeric variable are used, which are the \code{nquad}
 #' with largest weights.
 #'
+#' \code{sp} can be used to supply fixed smoothing parameter values, and \code{sp0}
+#' can be used to provide initial smoothing parameter values for REML optimisation.
+#' If a single value is supplied and the model requires more smoothing parameters,
+#' supplied values are repeated. It is currently only possible the fix or estimate
+#' all or no smoothing parameter values.
+#'  
 #' @references
 #' 
 #' Wood, S. N., Pya, N., & Safken, B. (2016). Smoothing parameter and model selection for general 
@@ -129,7 +137,7 @@
 #' @export
 ppgam <- function(formula, data, nodes = NULL, weights = 1, nquad, 
 approx = c("midpoint", "exact"), knots = NULL, use.data = TRUE, trace = 0,
-weight.non.numeric = FALSE) {
+weight.non.numeric = FALSE, sp0 = 1, sp = -1) {
 
 # convert and objects of class "Date" to integer
 data.class <- sapply(data, class)
@@ -227,15 +235,35 @@ if (use.data) {
 }
 
 G$control <- .control.ppgam()
+if (length(sp) > 1 & length(sp) != length(G$sp))
+  stop('Invalid number of fixed smoothing parameter supplied.')
+if (length(sp0) > 1 & length(sp0) != length(G$sp))
+  stop('Invalid number of initial smoothing parameter values supplied.')
 
 beta <- .give_beta0(G)
-rho0 <- numeric(length(G$sp))
-G$Sd <- evgam:::.joinSmooth(list(G))
+
+if (any(sp == -1)) {
+  rho0 <- log(sp0)
+  fixed.smooth <- FALSE
+} else {
+  rho0 <- log(sp)
+  fixed.smooth <- TRUE
+}
+
+if (length(G$sp) > 1 & length(rho0) == 1)
+  rho0 <- rep(rho0, length(G$sp))
+
 G$S <- evgam:::.makeS(G$Sd, rho0)
-G$null.deviance <- NA#.f0(beta, G)
 attr(rho0, "beta") <- beta
 
-fit.reml <- evgam:::.BFGS(rho0, .reml0, .reml1, dat=G, control=G$control$outer, trace=trace %in% c(1, 3))
+G$Sd <- evgam:::.joinSmooth(list(G))
+G$null.deviance <- NA#.f0(beta, G)
+
+if (fixed.smooth) {
+  fit.reml <- list(par = log(sp), objective = .reml0(rho0, dat = G))
+} else {
+  fit.reml <- evgam:::.BFGS(rho0, .reml0, .reml1, dat=G, control=G$control$outer, trace=trace %in% c(1, 3))
+}
 
 G$coefficients <- attr(fit.reml$objective, "beta")
 H <- attr(fit.reml$objective, "Hessian")
@@ -259,6 +287,7 @@ G$method <- "REML"
 if (!with.response) G$formula <- formula0
 G$family$no.r.sq <- TRUE
 G$gcv.ubre <- as.vector(fit.reml$objective)
+G$sp[seq_along(G$sp)] <- exp(fit.reml$par)
 n.samp <- max(1e3, 2 * G$nb)
 if (n.samp < nrow(G$X)) {
   G$R <- G$X[sample(nrow(G$X), n.samp, replace=FALSE),]
