@@ -235,7 +235,7 @@ if (use.data) {
   G$X <- predict(G, newdata=data, type="lpmatrix")
 }
 
-G$control <- .control.ppgam()
+G$control <- evgam::evgam.control(inner = list(gradtol = 1e-8))
 if (length(sp) > 1 & length(sp) != length(G$sp))
   stop('Invalid number of fixed smoothing parameter supplied.')
 if (length(sp0) > 1 & length(sp0) != length(G$sp))
@@ -263,6 +263,7 @@ G$null.deviance <- NA#.f0(beta, G)
 if (fixed.smooth) {
   fit.reml <- list(par = log(sp), objective = .reml0(rho0, dat = G))
 } else {
+  rho0 <- .refine_rho(rho0, G)
   if (outer == 'fd') {
     fit.reml <- evgam:::.BFGS(rho0, .reml0, .reml1_fd, dat=G, control=G$control$outer, trace=trace %in% c(1, 3))
   } else {

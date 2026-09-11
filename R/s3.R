@@ -217,3 +217,15 @@ simulate.ppgam <- function(object, nsim = 1, seed = NULL, newdata,
     X <- exp(X)
   return(X)
 }
+
+#' ppgam: A package for fitting generalised additive point process models.
+#'
+#' The ppgam package's main function is ppgam.
+#' 
+#' @section ppgam functions:
+#' The ppgam functions ...
+#'
+#' @keywords internal
+"_PACKAGE"
+#' @importFrom stats nlminb
+NULL

@@ -192,18 +192,150 @@ return(out)
   print(x[,2])
 }
 
+.nelder_mead_list <- function(init, f, xtol = 1e-3, ftol = 1e-4, max_iter = 500, trace = 1, ...) {
+  n <- length(init)  # Dimension of the problem
+  alpha <- 1         # Reflection coefficient
+  gamma <- 2         # Expansion coefficient
+  rho <- 0.5         # Contraction coefficient
+  sigma <- 0.5       # Shrink coefficient
+  
+  # Initialize the simplex
+  simplex <- list()
+  simplex[[1]] <- init
+  f_values_list <- list()
+  f_values_list[[1]] <- f(init, ...)
+  
+  if (trace > 0) {
+    cat(paste('Iteration:', 0))
+    cat('\n')
+    cat(paste('Value:', signif(f_values_list[[1]], 8)))
+    cat('\n')
+    cat(paste('Initial values: (', paste0(signif(init, 4), collapse = ', '), ')', sep = ''))
+    cat('\n')
+    cat(paste('Inner max |grad|:', signif(max(abs(attr(f_values_list[[1]], 'gradient'))), 4)))
+    cat('\n')
+    cat(paste('Inner iterations:', attr(f_values_list[[1]], 'iterations')))
+    cat('\n')
+    cat('\n')
+  }
+  
+  for (i in 1:n) {
+    x <- init
+    x[i] <- x[i] + 0.05 * (abs(x[i]) + 1)  # Small perturbation
+    simplex[[i + 1]] <- x
+  }
+  
+  # Evaluate function at simplex points
+  f_values_list <- lapply(simplex, f, ...)
+  f_values <- sapply(f_values_list, as.vector)
+  
+  iter <- 0
+  while (iter < max_iter) {
+    iter <- iter + 1
+    
+    # Order simplex points by function values
+    order_idx <- order(f_values)
+    simplex <- simplex[order_idx]
+    f_values <- f_values[order_idx]
+    f_values_list <- f_values_list[order_idx]
+    b0 <- attr(f_values_list[[1]], 'beta')
+    for (i in seq_along(simplex)) attr(simplex[[i]], 'beta') <- b0
+    
+    # Centroid of all points except the worst
+    # centroid <- colMeans(simplex[1:n, ])
+    centroid <- rowMeans(do.call(cbind, simplex[1:n]))
+    
+    if (trace > 0) {
+      cat(paste('Iteration:', iter))
+      cat('\n')
+      cat(paste('Value:', signif(f_values[1], 8)))
+      cat('\n')
+      cat(paste('Inner max |grad|:', signif(max(abs(attr(f_values_list[[1]], 'gradient'))), 4)))
+      cat('\n')
+      cat(paste('Inner iterations:', attr(f_values_list[[1]], 'iterations')))
+      cat('\n')
+      cat(paste('Centroid: (', paste0(signif(simplex[[1]], 4), collapse = ', '), ')', sep = ''))
+      cat('\n')
+      cat('\n')
+    }
+    
+    # Reflection
+    x_reflect <- centroid + alpha * (centroid - simplex[[n + 1]])
+    f_reflect <- f(x_reflect, ...)
+    
+    if (f_reflect < f_values[1]) {
+      # Expansion
+      x_expand <- centroid + gamma * (x_reflect - centroid)
+      f_expand <- f(x_expand, ...)
+      if (f_expand < f_reflect) {
+        simplex[[n + 1]] <- x_expand
+        f_values[n + 1] <- f_expand
+        f_values_list[[n + 1]] <- f_expand
+      } else {
+        simplex[[n + 1]] <- x_reflect
+        f_values[n + 1] <- f_reflect
+        f_values_list[[n + 1]] <- f_reflect
+      }
+    } else if (f_reflect < f_values[n]) {
+      # Accept reflection
+      simplex[[n + 1]] <- x_reflect
+      f_values[n + 1] <- f_reflect
+      f_values_list[[n + 1]] <- f_reflect
+    } else {
+      # Contraction
+      if (f_reflect < f_values[n + 1]) {
+        # Outside contraction
+        x_contract <- centroid + rho * (x_reflect - centroid)
+      } else {
+        # Inside contraction
+        x_contract <- centroid + rho * (simplex[[n + 1]] - centroid)
+      }
+      f_contract <- f(x_contract, ...)
+      
+      if (f_contract < f_values[n + 1]) {
+        simplex[[n + 1]] <- x_contract
+        f_values[n + 1] <- f_contract
+        f_values_list[[n + 1]] <- f_contract
+      } else {
+        # Shrink the simplex
+        for (i in 2:(n + 1)) {
+          simplex[[i]] <- simplex[[1]] + sigma * (simplex[[i]] - simplex[[1]])
+          f_values_list[[i]] <- f(simplex[[i]], ...)
+          f_values[i] <- f_values_list[[i]]
+          
+        }
+      }
+      
+    }
+    
+    # Check convergence
+    if ((f_values[n] - f_values[1]) / abs(f_values[1]) < ftol) {
+      break
+    }
+    if (mean(sapply(seq_along(init), function(i) diff(range(sapply(simplex, '[', i))))) < xtol) {
+      break
+    }
+  }
+  
+  f1 <- f_values[1]
+  attr(f1, 'beta') <- attr(simplex[[1]], 'beta')
+  attr(f1, 'Hessian') <- attr(f_values_list[[1]], 'Hessian')
+  list(par = simplex[[1]], objective = f1, iterations = iter, beta = attr(simplex[[1]], 'beta'))
+}
+
+
 ## function for initial basis function coefficients
 
 .give_beta0 <- function(G) {
 p <- ncol(G$X)
 here <- which.min(colSums((G$X - 1)^2))
 G <- list(wts=G$wts, X=matrix(1, nrow(G$X), 1), XT=matrix(1, nrow(G$XT), 1), control=G$control)
-init <- 10^seq(-10, 10)
+init <- seq(-10, 10)
 f.test <- sapply(init, .f0, dat=G)
 if (any(f.test != 1e20)) {
   init <- init[which.min(f.test)]
 } else {
-  stop("Can't find sensible starting values in [1e-10, 1e10]")
+  stop("Can't find sensible rate starting values in [1e-10, 1e10]")
 }
 G$S <- matrix(0, 1, 1)
 init <- evgam:::.newton_step(init, .f, .search, dat=G, control=G$control$inner)$par
@@ -278,11 +410,56 @@ if (newton) {
 }
 attr(out, "gradient") <- gH[[1]]
 attr(out, "Hessian") <- gH[[2]]
+# if (any(!is.finite(out))) {
+#   browser()
+#   print('fixing')
+#   attr(out, "gradient") <- rep(NA, length(gH[[1]]))
+# }
 out
 }
 
 ## REML functions
 # slightly adapted version of that from evgam
+
+.refine_rho <- function(rho0, dat) {
+rho00 <- rho0
+f0 <- .reml0(rho0, dat = dat)
+attr(rho0, "beta") <- attr(f0, 'beta')
+f1 <- 0 * as.vector(rho0)
+for (i in seq_along(rho0)) {
+  rho1 <- rho0
+  rho1[i] <- rho0[i] + 1
+  f1[i] <- .reml0(rho1, dat = dat)
+}
+adder <- c(0, 1)[1 + as.numeric(f1 < f0)]
+other_way <- which(f1 > f0)
+if (length(other_way) > 0) {
+  for (i in other_way) {
+    rho1 <- rho0
+    rho1[i] <- rho0[i] - 1
+    f1[i] <- .reml0(rho1, dat = dat)
+  }
+  not_adder <- which(f1[other_way] < f0)
+  if (length(not_adder) > 0)
+    adder[other_way[not_adder]] <- -1
+}
+attr(rho0, "beta") <- attr(f0, 'beta')
+cond <- TRUE
+it <- 0
+while(cond & it < 3) {
+  rho1 <- rho0 + adder
+  f1 <- .reml0(rho1, dat = dat)
+  if (f1 < f0) {
+    rho0 <- rho1
+    f0 <- f1
+    attr(rho0, "beta") <- attr(f0, 'beta')
+    it <- it + 1
+  } else {
+    cond <- FALSE
+  }
+}
+rho0
+}
 
 .reml0 <- function(pars, dat, beta=NULL, skipfit=FALSE) {
   if (is.null(beta)) beta <- attr(pars, "beta")
@@ -290,9 +467,15 @@ out
   dat$S <- evgam:::.makeS(dat$Sd, sp)
   if (!skipfit) {
     fitbeta <- evgam:::.newton_step_inner(beta, .f, .search, dat = dat, control = dat$control$inner)
+    # fitbeta <- try(evgam:::.newton_step_inner(beta, .f, .search, dat = dat, control = dat$control$inner), silent = TRUE)
+    # if (inherits(fitbeta, 'try-error'))
+    #   fitbeta <- list(par = beta, gradconv = FALSE)
     if (!fitbeta$gradconv) {
-      fitbeta <- nlminb(fitbeta$par, .f, .g, .H, dat = dat)
-      fitbeta <- evgam:::.newton_step_inner(fitbeta$par, .f, .search, dat = dat, control = dat$control$inner)
+      fitbeta0 <- nlminb(fitbeta$par, .f, .g, .H, dat = dat)
+      fitbeta <- evgam:::.newton_step_inner(fitbeta0$par, .f, .search, dat = dat, control = dat$control$inner)
+      # fitbeta <- try(evgam:::.newton_step_inner(fitbeta0$par, .f, .search, dat = dat, control = dat$control$inner), silent = TRUE)
+      # if (inherits(fitbeta, 'try-error'))
+      #   return(1e20)
     }
   } else {
     fitbeta <- list(objective=.f(beta, dat))
@@ -302,10 +485,12 @@ out
     fitbeta$par <- beta
   }
   logdetSdata <- evgam:::.logdetS(dat$Sd, pars)
-  halflogdetHdata <- try(list(d0=sum(log(diag(chol(fitbeta$Hessian))))), silent=TRUE)
-  if (inherits(halflogdetHdata, "try-error")) return(1e20)
+  logdetHdata <- evgam:::.d0logdetH(fitbeta, FALSE)
+  # halflogdetHdata <- try(list(d0=sum(log(diag(chol(fitbeta$Hessian))))), silent=TRUE)
+  # if (inherits(halflogdetHdata, "try-error")) return(1e20)
   out <- fitbeta$objective + as.numeric(fitbeta$convergence != 0) * 1e20
-  out <- out + halflogdetHdata$d0 - .5 * logdetSdata$d0
+  # out <- out + halflogdetHdata$d0 - .5 * logdetSdata$d0
+  out <- out + .5 * logdetHdata$d0 - .5 * logdetSdata$d0
   out <- as.vector(out)
   if (!is.finite(out)) return(1e20)
   attr(out, "beta") <- fitbeta$par
@@ -326,13 +511,16 @@ spSl <- lapply(seq_along(sp), function(i) sp[i] * attr(dat$Sd, "Sl")[[i]])
 S <- dat$S <- Reduce("+", spSl)
 H0 <- .gH0(beta, dat)[[2]]
 H <- H0 + S
-iH <- MASS::ginv(H)
+eV <- eigen(H, symmetric = TRUE)
+t1 <- 1 / eV$values
+t1[eV$values < sqrt(.Machine$double.eps)] <- 0
+iH <- crossprod(t(eV$vectors) * sqrt(t1))
 spSlb <- sapply(spSl, function(x) x %*% beta)
 db <- crossprod(iH, spSlb)
 thirdpp <- dat$wts * exp(tcrossprod(beta, dat$XT))[1,]
 thirdpp <- (dat$XT * as.vector(thirdpp)) %*% db
-eV <- eigen(H, symmetric=TRUE)
-XTV <- t(solve(eV$vectors, t(dat$XT)))
+XTV <- dat$XT %*% eV$vectors
+# XTV <- t(solve(eV$vectors, t(dat$XT)))
 dH <- sapply(seq_along(sp), function(i) sum(colSums(XTV * XTV * thirdpp[,i]) / eV$values))
 dH <- sapply(spSl, function(x) sum(iH * x)) - dH
 dH <- list(d1=dH)
@@ -367,13 +555,6 @@ d1
 }
 
 ## other functions
-
-.control.ppgam <- function(i, o) {
-  ctrl <- list()
-  ctrl$inner <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=1e-4, stepmax=1e2, dgradtol=1e-4, alpha0 = 1)
-  ctrl$outer <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=2e-2, stepmax=3, dgradtol=1e-4, alpha0 = 1)
-  ctrl
-}
 
 .pivchol_rmvn <- function(n, mu, Sig) {
   R <- suppressWarnings(chol(Sig, pivot = TRUE))
