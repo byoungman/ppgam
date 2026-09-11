@@ -2,15 +2,18 @@ Package: ppgam
 Type: Package
 Title: Generalised Additive Point Process Models
 Version: 1.0.3
-Date: 2025-02-14
-Author: Ben Youngman [aut, cre], Theo Economou [aut]
-Maintainer: Ben Youngman <b.youngman@exeter.ac.uk>
+Date: 2026-09-11
+Authors@R: c(person("Givenname", "Familyname", role = c("aut", "cre"),
+                    email = "yourfault@somewhere.net"),
+             person("Anotherone", "Ifany", role = "ctb"))
 Description: Methods for fitting point processes with parameters of generalised additive 
       model (GAM) form are provided. For an introduction to point processes see Cox, D.R & 
       Isham, V. (Point Processes, 1980, CRC Press), GAMs see Wood, S.N. (2017) 
       <doi:10.1201/9781315370279>, and the fitting approach see Wood, S.N., Pya, N. & 
       Safken, B. (2016) <doi:10.1080/01621459.2016.1180986>.
 License: GPL-3
+Author: Ben Youngman [aut, cre], Theo Economou [aut]
+Maintainer: Ben Youngman <b.youngman@exeter.ac.uk>
 Depends: R (>= 3.5.0)
 Imports: MASS, mgcv, evgam
-RoxygenNote: 7.3.2
+Config/roxygen2/version: 8.1.0

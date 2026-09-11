@@ -178,13 +178,18 @@ if (!is.null(x)) {
 return(out)
 }
 
+.nodes2bins <- function(x) {
+  vec <- as.vector(t(x[, 1] + outer(x[, 2], .5 * c(-1, 1))))
+  colMeans(matrix(rep(vec, c(2, rep(1, length(vec) - 2), 2)), 2))
+}
+
 .print.nodes <- function(x, nm) {
-cat("\n")
-cat(paste("**", nm, "**\n"))
-cat("- Nodes:\n")
-print(x[,1])
-cat("- Weights:\n")
-print(x[,2])
+  cat("\n")
+  cat(paste("**", nm, "**\n"))
+  cat("- Nodes:\n")
+  print(x[,1])
+  cat("- Weights:\n")
+  print(x[,2])
 }
 
 ## function for initial basis function coefficients
@@ -248,6 +253,21 @@ gH$H <- gH$H + dat$S
 gH
 }
 
+.g <- function(pars, dat) {
+  # gradient of penalised negative log-likelihood 
+  # for point process model
+  gH <- .gH0(pars, dat)
+  bS <- crossprod(pars, dat$S)[1,]
+  gH$g + bS
+}
+
+.H <- function(pars, dat) {
+  # Hessian of penalised negative log-likelihood 
+  # for point process model
+  gH <- .gH0(pars, dat)
+  gH$H + dat$S
+}
+
 .search <- function(pars, dat, kept, newton=TRUE) {
 # Newton search direction
 gH <- .gH(pars, dat)
@@ -265,37 +285,34 @@ out
 # slightly adapted version of that from evgam
 
 .reml0 <- function(pars, dat, beta=NULL, skipfit=FALSE) {
-if (is.null(beta)) beta <- attr(pars, "beta")
-sp <- exp(pars)
-dat$S <- evgam:::.makeS(dat$Sd, sp)
-if (!skipfit) {
-fitbeta <- evgam:::.newton_step(beta, .f, .search, dat=dat, control=dat$control$inner)
-if (any(abs(fitbeta$gradient) > 1)) {
-it0 <- dat$control$inner$itlim
-dat$control$inner$itlim <- 10
-fitbeta <- evgam:::.newton_step(fitbeta$par, .f, .search, dat=dat, control=dat$control$inner, newton=FALSE, alpha0=.05)
-dat$control$inner$itlim <- it0
-fitbeta <- evgam:::.newton_step(fitbeta$par, .f, .search, dat=dat, control=dat$control$inner)
-}
-if (inherits(fitbeta, "try-error")) return(1e20)
-} else {
-fitbeta <- list(objective=.f(beta, dat))
-fitbeta$convergence <- 0
-fitbeta$gH <- .gH(beta, dat)
-fitbeta$Hessian <- fitbeta$gH[[2]]
-fitbeta$par <- beta
-}
-logdetSdata <- evgam:::.logdetS(dat$Sd, pars)
-halflogdetHdata <- try(list(d0=sum(log(diag(chol(fitbeta$Hessian))))), silent=TRUE)
-if (inherits(halflogdetHdata, "try-error")) return(1e20)
-out <- fitbeta$objective + as.numeric(fitbeta$convergence != 0) * 1e20
-out <- out + halflogdetHdata$d0 - .5 * logdetSdata$d0
-out <- as.vector(out)
-if (!is.finite(out)) return(1e20)
-attr(out, "beta") <- fitbeta$par
-attr(out, "gradient") <- fitbeta$gradient
-attr(out, "Hessian") <- fitbeta$Hessian
-return(out)
+  if (is.null(beta)) beta <- attr(pars, "beta")
+  sp <- exp(pars)
+  dat$S <- evgam:::.makeS(dat$Sd, sp)
+  if (!skipfit) {
+    fitbeta <- evgam:::.newton_step_inner(beta, .f, .search, dat = dat, control = dat$control$inner)
+    if (!fitbeta$gradconv) {
+      fitbeta <- nlminb(fitbeta$par, .f, .g, .H, dat = dat)
+      fitbeta <- evgam:::.newton_step_inner(fitbeta$par, .f, .search, dat = dat, control = dat$control$inner)
+    }
+  } else {
+    fitbeta <- list(objective=.f(beta, dat))
+    fitbeta$convergence <- 0
+    fitbeta$gH <- .gH(beta, dat)
+    fitbeta$Hessian <- fitbeta$gH[[2]]
+    fitbeta$par <- beta
+  }
+  logdetSdata <- evgam:::.logdetS(dat$Sd, pars)
+  halflogdetHdata <- try(list(d0=sum(log(diag(chol(fitbeta$Hessian))))), silent=TRUE)
+  if (inherits(halflogdetHdata, "try-error")) return(1e20)
+  out <- fitbeta$objective + as.numeric(fitbeta$convergence != 0) * 1e20
+  out <- out + halflogdetHdata$d0 - .5 * logdetSdata$d0
+  out <- as.vector(out)
+  if (!is.finite(out)) return(1e20)
+  attr(out, "beta") <- fitbeta$par
+  attr(out, "gradient") <- fitbeta$gradient
+  attr(out, "Hessian") <- fitbeta$Hessian
+  attr(out, "iterations") <- fitbeta$iterations
+  return(out)
 }
 
 .reml1 <- function(pars, dat, H=NULL, beta=NULL) {
@@ -326,13 +343,36 @@ d1 <- d1 + .5 * dH$d1
 d1
 }
 
+.reml1_fd <- function(pars, dat, H = NULL, beta = NULL, eps = 5e-3) {
+  if (is.null(beta)) {
+    beta <- attr(pars, "beta")
+  } else {
+    attr(pars, "beta") <- beta
+  }
+  f0 <- .reml0(pars, dat, H)
+  b0 <- attr(f0, 'beta')
+  eps <- rep(eps, length(pars))
+  fu <- fl <- numeric(length(pars))
+  for (i in seq_along(pars)) {
+    pe <- replace(pars, i, pars[i] + eps[i])
+    attr(pe, "beta") <- b0
+    fu[i] <- .reml0(pe, dat, H)
+  }
+  for (i in seq_along(pars)) {
+    pe <- replace(pars, i, pars[i] - eps[i])
+    attr(pe, "beta") <- b0
+    fl[i] <- .reml0(pe, dat, H)
+  }
+  .5 * as.vector(fu - fl)/eps
+}
+
 ## other functions
 
 .control.ppgam <- function(i, o) {
-ctrl <- list()
-ctrl$inner <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=1e-4, stepmax=1e2)
-ctrl$outer <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=2e-2, stepmax=3)
-ctrl
+  ctrl <- list()
+  ctrl$inner <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=1e-4, stepmax=1e2, dgradtol=1e-4, alpha0 = 1)
+  ctrl$outer <- list(steptol=1e-12, itlim=1e2, fntol=1e-8, gradtol=2e-2, stepmax=3, dgradtol=1e-4, alpha0 = 1)
+  ctrl
 }
 
 .pivchol_rmvn <- function(n, mu, Sig) {

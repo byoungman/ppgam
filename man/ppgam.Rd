@@ -16,7 +16,8 @@ ppgam(
   trace = 0,
   weight.non.numeric = FALSE,
   sp0 = 1,
-  sp = -1
+  sp = -1,
+  outer = "bfgs"
 )
 }
 \arguments{
@@ -43,6 +44,8 @@ ppgam(
 \item{sp0}{a scalar or vector of initial smoothing parameter values. Defaults to 1}
 
 \item{sp}{a scalar or vector of fixed smoothing parameter values. Defaults to -1, which estimates via REML}
+
+\item{outer}{character string from 'bfgs' (default) or 'fd' (finite-difference) giving REML smoothing parameter estimation optimiser}
 }
 \value{
 An object of class \code{gam}, as returned by \code{mgcv::gam}, with parameters,

@@ -12,6 +12,7 @@
 #' @param weight.non.numeric should nodes for non-numeric variables be weighted according how often they occur? Defaults to \code{FALSE}
 #' @param sp0 a scalar or vector of initial smoothing parameter values. Defaults to 1
 #' @param sp a scalar or vector of fixed smoothing parameter values. Defaults to -1, which estimates via REML
+#' @param outer character string from 'bfgs' (default) or 'fd' (finite-difference) giving REML smoothing parameter estimation optimiser
 #' 
 #' @details
 #'
@@ -137,7 +138,7 @@
 #' @export
 ppgam <- function(formula, data, nodes = NULL, weights = 1, nquad, 
 approx = c("midpoint", "exact"), knots = NULL, use.data = TRUE, trace = 0,
-weight.non.numeric = FALSE, sp0 = 1, sp = -1) {
+weight.non.numeric = FALSE, sp0 = 1, sp = -1, outer = 'bfgs') {
 
 # convert and objects of class "Date" to integer
 data.class <- sapply(data, class)
@@ -262,7 +263,15 @@ G$null.deviance <- NA#.f0(beta, G)
 if (fixed.smooth) {
   fit.reml <- list(par = log(sp), objective = .reml0(rho0, dat = G))
 } else {
-  fit.reml <- evgam:::.BFGS(rho0, .reml0, .reml1, dat=G, control=G$control$outer, trace=trace %in% c(1, 3))
+  if (outer == 'fd') {
+    fit.reml <- evgam:::.BFGS(rho0, .reml0, .reml1_fd, dat=G, control=G$control$outer, trace=trace %in% c(1, 3))
+  } else {
+    if (outer == 'nelder-mead') {
+      fit.reml <- .nelder_mead_list(rho0, .reml0, dat = G, trace = trace %in% c(1, 3))
+    } else {
+      fit.reml <- evgam:::.BFGS(rho0, .reml0, .reml1, dat=G, control=G$control$outer, trace=trace %in% c(1, 3))
+    }
+  }
 }
 
 G$coefficients <- attr(fit.reml$objective, "beta")
@@ -295,6 +304,7 @@ if (n.samp < nrow(G$X)) {
   G$R <- G$X
 }
 G$family$family <- 'Poisson process'
+G$nodes <- nodes
 
 class(G) <- c('ppgam', class(G))
 return(G)
